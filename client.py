@@ -3,17 +3,15 @@ import socket
 import struct
 import sys
 import time
-from select import select
 from threading import Thread
 import getch
 import signal
+from scapy.arch import get_if_addr
 
 os.system("")
 
 UDP_PORT = 13117
-TCP_PORT = 5031
 MESSAGE_LENGTH = 1024
-CLIENT_NICKNAME = "RAK BIBI\n"
 TIME_TO_PLAY = 10  # seconds
 BROADCAST_IP = ""
 sock = None
@@ -34,63 +32,55 @@ class style:
     RESET = '\033[0m'
 
 
-print(style.YELLOW + "Client started, listening for offer requests...")
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind((BROADCAST_IP, UDP_PORT))
-
+# Handle signal to escape blocking thread
 def handler(signum, frame):
     raise Exception()
 
-def print_messages(sock):
-    while True:
-        try:
-            ch = getch.getch().encode() # blocking, wait for char
-            sock.sendall(ch)    # if socket is still open, send it
-        except:
-            break   # if socket is closed, exit
+
+"""
+method: get_from_server
+purpose: get messages from the server
+"""
+
 
 def get_from_server(sock):
-     while True:  # prints messages from server
-              sys.stdout.write(style.GREEN + sock.recv(MESSAGE_LENGTH).decode())
-   
+    while True:  # prints messages from server
+        time.sleep(0.1)
+        try:
+            sys.stdout.write(style.GREEN + sock.recv(MESSAGE_LENGTH).decode())
+        except:
+            break
 
 
- 
+print(style.YELLOW + "Client started, listening for offer requests...")  # waits for server suggestion
 while True:
-
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)  # init UDP socket
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((BROADCAST_IP, UDP_PORT))
     data, address = sock.recvfrom(MESSAGE_LENGTH)
-    # server_ip_address = address[0]
-    server_ip_address = "127.0.1.1"
+    server_ip_address = str(address[0])
     try:
-        cookie, message_type, server_tcp_port = struct.unpack('LBH', data)
-        if cookie == 0xfeedbeef or message_type == 0x2:
+        cookie, message_type, server_tcp_port = struct.unpack('LBH', data)  # get message in specific format
+        if cookie == 0xfeedbeef or message_type == 0x2:  # check if message is as expected
             print("Received offer from " + server_ip_address + " attempting to connect...")
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # init TCP socket
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.connect((server_ip_address, server_tcp_port))
-            name = raw_input("Type In Your Nickname: ")
-            sock.sendall(name.encode())
-
-            reciever = Thread(target=print_messages, args=(sock,))
+            name = input("Type In Your Nickname: ")
+            sock.sendall(name.encode())  # send team's name to server
             sys.stdout.write(style.GREEN + sock.recv(MESSAGE_LENGTH).decode())  # the game begin message
-            printer = Thread(target = get_from_server  , args =(sock,))
+            printer = Thread(target=get_from_server, args=(sock,))
             printer.start()
             signal.signal(signal.SIGALRM, handler)
             signal.alarm(TIME_TO_PLAY)
             while True:
                 try:
-                    ch = getch.getch().encode() # blocking, wait for char
-                    sock.sendall(ch)    # if socket is still open, send it
+                    ch = getch.getch().encode()  # blocking, wait for char
+                    sock.sendall(ch)  # if socket is still open, send it
                 except:
-                    break   # if socket is closed, exit
-                    # send chars to server
-                
-            
-            #while True:  # prints messages from server
-             #   sys.stdout.write(style.GREEN + sock.recv(MESSAGE_LENGTH).decode())
+                    break
         else:
-            print("Bad UDP Message Format")
-    except:
+            print("Bad UDP Message Format")  # got message not in the expected format
+    except Exception as e:
         pass
